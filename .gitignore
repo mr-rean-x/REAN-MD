@@ -1,0 +1,6 @@
+node_modules/
+.env
+logs/
+kingbadboitimewisher/pairing/
+*.log
+.DS_Store
