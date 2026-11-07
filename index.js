@@ -206,6 +206,15 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
+// HTTP pair API — lets the website (Vercel) request pairing codes from THIS bot,
+// so pairing on the website links the number to this bot (like Jawad MD's site).
+// Never crashes the bot: any error here is logged and the bot keeps running.
+try {
+    require('./pair-server').start();
+} catch (error) {
+    console.log(chalk.yellow('⚠️  Pair API server failed to start:', error.message));
+}
+
 initializeBot().catch((error) => {
     console.log(chalk.red('\n❌ Fatal error during initialization:'));
     console.log(chalk.yellow('Error:'), error.message);
