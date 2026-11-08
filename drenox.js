@@ -89,6 +89,43 @@ async function ytdlpSearch(query) {
   });
 }
 
+// yt-dlp -j: media info (url, ext, title, uploader) — Instagram/Twitter er moto site er jonno
+function ytdlpInfo(mediaUrl) {
+  return new Promise((resolve, reject) => {
+    execFile('yt-dlp', ['-j', '--no-warnings', '--no-playlist', mediaUrl], { timeout: 90000 }, (err, stdout, stderr) => {
+      if (err) {
+        if (err.code === 'ENOENT') return reject(new Error(YTDLP_HINT));
+        const msg = (stderr || err.message || 'yt-dlp failed').toString().split('\n').filter(Boolean).pop();
+        return reject(new Error((msg || 'yt-dlp failed').slice(0, 200)));
+      }
+      try {
+        const j = JSON.parse((stdout || '').trim().split('\n')[0]);
+        if (!j) return reject(new Error('yt-dlp kono media link dilo na'));
+        // Instagram/Twitter e top-level url thake na — formats[] theke best media url nao
+        let url = j.url, ext = j.ext;
+        if (!url && Array.isArray(j.formats) && j.formats.length) {
+          const isVid = f => f.url && f.vcodec !== 'none' && ['mp4','webm','mov','m4v'].includes((f.ext || '').toLowerCase());
+          const isImg = f => f.url && ['jpg','jpeg','png','webp'].includes((f.ext || '').toLowerCase());
+          const vids = j.formats.filter(isVid).sort((a, b) => ((b.height || 0) - (a.height || 0)) || ((b.filesize || 0) - (a.filesize || 0)));
+          const imgs = j.formats.filter(isImg);
+          const pick = vids[0] || imgs[0] || j.formats.filter(f => f.url).sort((a, b) => (b.filesize || 0) - (a.filesize || 0))[0];
+          if (pick) { url = pick.url; ext = ext || pick.ext; }
+        }
+        if (!url) return reject(new Error('yt-dlp kono media link dilo na'));
+        resolve({ ...j, url, ext });
+      } catch { reject(new Error('yt-dlp info parse kora jay nai')); }
+    });
+  });
+}
+// Share link (facebook.com/share/v/...) ke asol video URL e resolve koro
+async function resolveUrl(u) {
+  try {
+    const r = await axios.get(u, { timeout: 30000, maxRedirects: 5, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36' }, validateStatus: () => true });
+    const final = (r.request && r.request.res && r.request.res.responseUrl) || '';
+    return final || u;
+  } catch { return u; }
+}
+
 // ── REAN MD audit-fix helpers ──
 const FFMPEG_HINT = 'ffmpeg install kora nai. PC te install koro: winget install ffmpeg, tarpor bot restart dao.';
 function ffmpegConvert(inPath, outPath, extraArgs) {
@@ -6387,28 +6424,36 @@ case 'apkdl': {
   if (!text) return reply(`*Example:* ${prefix + command} com.whatsapp`);
   
   try {
-    const apiUrl = `${NEXORACLE_API}downloader/apk?apikey=${NEXORACLE_KEY}&q=${encodeURIComponent(text)}`;
-    const data = await fetchJson(apiUrl, { timeout: 15000 });
-
-    if (data.status && data.result) {
-      const { name, icon, download } = data.result;
-
-      await bad.sendMessage(m.chat, {
-        image: { url: icon },
-        caption: `╭〔 *📦 APK Downloader* 〕─⬣\n│\n│ 🧩 *Name:* _${name}_\n│ 📁 *Package:* _${text}_\n│\n╰────────────⬣\n_Sending file..._`
-      }, { quoted: m });
-
-      await bad.sendMessage(m.chat, {
-        document: { url: download },
-        fileName: `${name}.apk`,
-        mimetype: 'application/vnd.android.package-archive'
-      }, { quoted: m });
-    } else {
-      reply('*APK not found.* Try a different package ID.');
-    }
+    // Aptoide public API (kono key lage na, fast, reliable) — NexOracle APK endpoint dead/flaky (404)
+    const apiUrl = `https://ws75.aptoide.com/api/7/apps/search/query=${encodeURIComponent(text)}/limit=1`;
+    const data = await fetchJson(apiUrl, { timeout: 30000 });
+    const app = data && data.datalist && data.datalist.list && data.datalist.list[0];
+    if (!app || !app.file || !app.file.path) return reply('*APK pai nai.* App er naam ba package id (jemon com.whatsapp) dao.');
+    const name = app.name || text;
+    const icon = app.icon || '';
+    const dlUrl = app.file.path;
+    const vername = app.file.vername || '';
+    const sizeMB = app.size ? (app.size / 1024 / 1024).toFixed(1) : '?';
+    const safeName = String(name).replace(/[^a-zA-Z0-9._-]+/g, '_');
+    await bad.sendMessage(m.chat, {
+        document: { url: dlUrl },
+        fileName: `${safeName}_v${vername}.apk`,
+        mimetype: 'application/vnd.android.package-archive',
+        caption: `╭━━━〔 *ᴀᴘᴋ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮\n\n📦 *ɴᴀᴍᴇ:* ${name}\n📱 *ᴘᴀᴄᴋᴀɢᴇ:* ${app.package || text}\n🔢 *ᴠᴇʀsɪᴏɴ:* ${vername}\n📊 *sɪᴢᴇ:* ${sizeMB} MB\n\n╰━━━━━━━━━━━━━━━━━╯`,
+        contextInfo: {
+            externalAdReply: {
+                thumbnailUrl: icon,
+                title: name,
+                body: `Version ${vername} • ${sizeMB} MB`,
+                sourceUrl: dlUrl,
+                renderLargerThumbnail: true,
+                mediaType: 1
+            }
+        }
+    }, { quoted: m });
   } catch (e) {
-    console.error(e);
-    reply('*Failed to fetch APK.*');
+    console.error('APK Error:', e.message);
+    return reply('*APK download failed.*');
   }
 }
 break;
@@ -6484,44 +6529,33 @@ case "igdl": {
     try {
         await bad.sendMessage(m.chat, {react: {text: '⏳', key: m.key}});
         
-        const response = await axios.get(`https://api.nexoracle.com/downloader/insta?apikey=${API_KEY}&url=${encodeURIComponent(text)}`, { timeout: 25000 });
-        
-        const data = response.data.result;
-        
-        if (data && data.url_list && data.url_list.length > 0) {
-            for (let media of data.url_list) {
-                if (media.includes('.mp4') || data.media_details?.type === 'video') {
-                    await bad.sendMessage(m.chat, {
-                        video: {url: media},
-                        caption: `╭━━━〔 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮
-
-👤 *ᴜsᴇʀ:* ${data.post_info?.owner_username || 'N/A'}
-❤️ *ʟɪᴋᴇs:* ${data.post_info?.likes?.toLocaleString() || 'N/A'}
-
-╰━━━━━━━━━━━━━━━━━╯`,
-                        mimetype: 'video/mp4'
-                    }, {quoted: m});
-                } else {
-                    await bad.sendMessage(m.chat, {
-                        image: {url: media},
-                        caption: `╭━━━〔 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮
-
-👤 *ᴜsᴇʀ:* ${data.post_info?.owner_username || 'N/A'}
-❤️ *ʟɪᴋᴇs:* ${data.post_info?.likes?.toLocaleString() || 'N/A'}
-
-╰━━━━━━━━━━━━━━━━━╯`
-                    }, {quoted: m});
-                }
+        // yt-dlp diye Instagram media (kono API key lage na — NexOracle dead)
+        const info = await ytdlpInfo(text);
+        const mediaUrl = info.url || '';
+        const ext = (info.ext || '').toLowerCase();
+        const title = info.title || info.uploader || 'Instagram';
+        const caption = `╭━━━〔 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮\n\n📝 *ᴛɪᴛʟᴇ:* ${title}\n👤 *ᴜsᴇʀ:* ${info.uploader || 'N/A'}\n\n╰━━━━━━━━━━━━━━━━━╯`;
+        const isVideo = ['mp4', 'webm', 'mov', 'm4v'].includes(ext) || mediaUrl.includes('.mp4');
+        if (isVideo) {
+            const outFile = path.join(__dirname, 'tmp', `ig_${Date.now()}.mp4`);
+            fs.mkdirSync(path.join(__dirname, 'tmp'), { recursive: true });
+            try {
+                await ytdlpDownloadFile(text, 'best[ext=mp4]/best', outFile);
+                if (!fs.existsSync(outFile)) throw new Error('video file toiri hoy nai');
+                const vsize = fs.statSync(outFile).size;
+                if (vsize > 100 * 1024 * 1024) { fs.unlinkSync(outFile); return reply('❌ Video ta onek boro (100MB+), WhatsApp e pathano jabe na.'); }
+                await bad.sendMessage(m.chat, { video: fs.readFileSync(outFile), caption, mimetype: 'video/mp4' }, { quoted: m });
+            } finally {
+                try { if (fs.existsSync(outFile)) fs.unlinkSync(outFile); } catch {}
             }
-            await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
         } else {
-            throw new Error('ɴᴏ ᴍᴇᴅɪᴀ ғᴏᴜɴᴅ');
+            await bad.sendMessage(m.chat, { image: { url: mediaUrl }, caption }, { quoted: m });
         }
-        
+        await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
     } catch (error) {
         console.error('Instagram Error:', error.message);
         await bad.sendMessage(m.chat, {react: {text: '❌', key: m.key}});
-        return reply(`❌ ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅ ғᴀɪʟᴇᴅ\n\n${error.code === 'ECONNABORTED' || (error.response && error.response.status >= 400) ? 'Instagram server theke kono response ashe nai. Pore abar try koro.' : error.message}`);
+        return reply(`❌ ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅ ғᴀɪʟᴇᴅ\n\n${error.message}`);
     }
 }
 break;
@@ -6537,33 +6571,31 @@ case "fbdl": {
         return reply("ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴀ ᴠᴀʟɪᴅ ғᴀᴄᴇʙᴏᴏᴋ ʟɪɴᴋ");
     }
     
+    const outFile = path.join(__dirname, 'tmp', `fb_${Date.now()}.mp4`);
+    fs.mkdirSync(path.join(__dirname, 'tmp'), { recursive: true });
     try {
         await bad.sendMessage(m.chat, {react: {text: '⏳', key: m.key}});
         
-        const videoUrl = await ytdlpDirectUrl(text, 'best[ext=mp4]/best');
-        const data = { sd_url: videoUrl, title: 'Facebook Video' };
+        // Share link (facebook.com/share/v/...) ke asol video URL e resolve koro, tarpor FILE download
+        const videoPage = await resolveUrl(text);
+        await ytdlpDownloadFile(videoPage, 'best[ext=mp4]/best', outFile);
+        if (!fs.existsSync(outFile)) throw new Error('video file toiri hoy nai');
+        const vsize = fs.statSync(outFile).size;
+        if (vsize > 100 * 1024 * 1024) { fs.unlinkSync(outFile); return reply('❌ Video ta onek boro (100MB+), WhatsApp e pathano jabe na. Choto video try koro.'); }
 
-        if (data && data.sd_url) {
-            await bad.sendMessage(m.chat, {
-                video: {url: data.hd_url || data.sd_url},
-                caption: `╭━━━〔 *ғᴀᴄᴇʙᴏᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮
-
-📝 *ᴛɪᴛʟᴇ:* ${data.title || 'N/A'}
-📊 *ǫᴜᴀʟɪᴛʏ:* MP4
-
-╰━━━━━━━━━━━━━━━━━╯`,
-                mimetype: 'video/mp4'
-            }, {quoted: m});
-            
-            await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
-        } else {
-            throw new Error('ɴᴏ ᴠɪᴅᴇᴏ ғᴏᴜɴᴅ');
-        }
+        await bad.sendMessage(m.chat, {
+            video: fs.readFileSync(outFile),
+            caption: `╭━━━〔 *ғᴀᴄᴇʙᴏᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮\n\n📊 *ǫᴜᴀʟɪᴛʏ:* MP4\n\n╰━━━━━━━━━━━━━━━━━╯`,
+            mimetype: 'video/mp4'
+        }, {quoted: m});
         
+        await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
     } catch (error) {
         console.error('Facebook Error:', error.message);
         await bad.sendMessage(m.chat, {react: {text: '❌', key: m.key}});
         return reply(`❌ ғᴀᴄᴇʙᴏᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅ ғᴀɪʟᴇᴅ\n\n${error.message}`);
+    } finally {
+        try { if (fs.existsSync(outFile)) fs.unlinkSync(outFile); } catch {}
     }
 }
 break;
@@ -6582,38 +6614,32 @@ case "x": {
     try {
         await bad.sendMessage(m.chat, {react: {text: '⏳', key: m.key}});
         
-        const videoUrl = await ytdlpDirectUrl(text, 'best[ext=mp4]/best');
-        const data = { media: [{ type: 'video', url: videoUrl, quality: 'MP4' }] };
-
-        if (data && data.media && data.media.length > 0) {
-            for (let media of data.media) {
-                if (media.type === 'video') {
-                    await bad.sendMessage(m.chat, {
-                        video: {url: media.url},
-                        caption: `╭━━━〔 *ᴛᴡɪᴛᴛᴇʀ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮
-
-📹 *ǫᴜᴀʟɪᴛʏ:* ${media.quality || 'HD'}
-✅ *ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ*
-
-╰━━━━━━━━━━━━━━━━━╯`,
-                        mimetype: 'video/mp4'
-                    }, {quoted: m});
-                } else if (media.type === 'image') {
-                    await bad.sendMessage(m.chat, {
-                        image: {url: media.url},
-                        caption: `╭━━━〔 *ᴛᴡɪᴛᴛᴇʀ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮
-
-✅ *ɪᴍᴀɢᴇ ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ*
-
-╰━━━━━━━━━━━━━━━━━╯`
-                    }, {quoted: m});
-                }
+        // yt-dlp diye media info nao, tarpor FILE download kore pathano (streaming er problem nai)
+        const info = await ytdlpInfo(text);
+        const mediaUrl = info.url || '';
+        const ext = (info.ext || '').toLowerCase();
+        const isVideo = ['mp4', 'webm', 'mov', 'm4v'].includes(ext) || mediaUrl.includes('.mp4') || mediaUrl.includes('video.twimg.com');
+        if (isVideo) {
+            const outFile = path.join(__dirname, 'tmp', `tw_${Date.now()}.mp4`);
+            fs.mkdirSync(path.join(__dirname, 'tmp'), { recursive: true });
+            try {
+                await ytdlpDownloadFile(text, 'best[ext=mp4]/best', outFile);
+                if (!fs.existsSync(outFile)) throw new Error('video file toiri hoy nai');
+                await bad.sendMessage(m.chat, {
+                    video: fs.readFileSync(outFile),
+                    caption: `╭━━━〔 *ᴛᴡɪᴛᴛᴇʀ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮\n\n📹 *ǫᴜᴀʟɪᴛʏ:* HD\n✅ *ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ*\n\n╰━━━━━━━━━━━━━━━━━╯`,
+                    mimetype: 'video/mp4'
+                }, { quoted: m });
+            } finally {
+                try { if (fs.existsSync(outFile)) fs.unlinkSync(outFile); } catch {}
             }
-            await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
         } else {
-            throw new Error('ɴᴏ ᴍᴇᴅɪᴀ ғᴏᴜɴᴅ');
+            await bad.sendMessage(m.chat, {
+                image: { url: mediaUrl },
+                caption: `╭━━━〔 *ᴛᴡɪᴛᴛᴇʀ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮\n\n✅ *ɪᴍᴀɢᴇ ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ*\n\n╰━━━━━━━━━━━━━━━━━╯`
+            }, { quoted: m });
         }
-        
+        await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
     } catch (error) {
         console.error('Twitter Error:', error.message);
         await bad.sendMessage(m.chat, {react: {text: '❌', key: m.key}});
@@ -6688,11 +6714,14 @@ case "spotifydl": {
         const sres = await yts(trackQuery);
         if (!sres.videos.length) throw new Error('YouTube e gaan ta khuje pai nai');
         const svideo = sres.videos[0];
-        const saudio = await ytdlpDirectUrl(svideo.url, 'bestaudio[ext=m4a]/bestaudio/best');
-        await bad.sendMessage(m.chat, {
-            audio: {url: saudio},
-            mimetype: "audio/mp4",
-            fileName: `${svideo.title}.m4a`,
+        // Audio FILE download kore pathano (expiring URL er problem nai) — .play er moto
+        const soutPath = reanTmpFile('.mp4');
+        try {
+          await ytdlpDownloadAudio(svideo.url, soutPath);
+          await bad.sendMessage(m.chat, {
+            audio: { url: soutPath },
+            mimetype: 'audio/mp4',
+            fileName: `${svideo.title}.mp4`,
             contextInfo: {
                 externalAdReply: {
                     thumbnailUrl: trackImage || svideo.thumbnail,
@@ -6703,7 +6732,10 @@ case "spotifydl": {
                     mediaType: 1
                 }
             }
-        }, {quoted: m});
+        }, { quoted: m });
+        } finally {
+          try { fs.unlinkSync(soutPath); } catch {}
+        }
         await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
         
     } catch (error) {
@@ -6787,16 +6819,26 @@ case 'ytaudio': {
   
   await loading();
   
+  // Audio FILE download kore pathano (expiring URL er problem nai) — .play er moto
+  const outPath = reanTmpFile('.mp4');
   try {
-    const audioUrl = await ytdlpDirectUrl(text, 'bestaudio[ext=m4a]/bestaudio/best');
+    await ytdlpDownloadAudio(text, outPath);
     await bad.sendMessage(m.chat, {
-      audio: { url: audioUrl },
+      audio: { url: outPath },
       mimetype: 'audio/mp4',
-      fileName: 'audio.m4a'
+      fileName: 'audio.mp4'
     }, { quoted: m });
   } catch (err) {
     console.error(err);
-    reply('❌ Failed to download audio.');
+    // Fallback: direct URL stream
+    try {
+      const audioUrl = await ytdlpDirectUrl(text, 'bestaudio[ext=m4a]/bestaudio/best');
+      await bad.sendMessage(m.chat, { audio: { url: audioUrl }, mimetype: 'audio/mp4', fileName: 'audio.m4a' }, { quoted: m });
+    } catch {
+      reply('❌ Failed to download audio.');
+    }
+  } finally {
+    try { fs.unlinkSync(outPath); } catch {}
   }
 }
 break;
@@ -6839,24 +6881,9 @@ case 'threadsdl': {
   if (!text) return reply(`*Usage:* ${prefix}threads <threads url>`);
   if (!text.includes('threads.net') && !text.includes('threads.com')) return reply('❌ Invalid Threads link!');
   
-  await loading();
-  
-  try {
-    const apiUrl = `${NEXORACLE_API}downloader/threads?apikey=${NEXORACLE_KEY}&url=${encodeURIComponent(text)}`;
-    const data = (await axios.get(apiUrl, { timeout: 25000 })).data;
-    
-    if (data.status && data.result?.video) {
-      await bad.sendMessage(m.chat, {
-        video: { url: data.result.video },
-        caption: `✅ *Threads Video*`
-      }, { quoted: m });
-    } else {
-      reply('❌ Failed to download');
-    }
-  } catch (err) {
-    console.error(err);
-    reply('❌ Failed to download.');
-  }
+  // Threads er kono free downloader ekhon kaj kore na:
+  // NexOracle dead (404), yt-dlp er Threads extractor nai, Threads page theke video link ber kora jay na (JS shell), Cobalt auth chay, EasyDown paid.
+  return reply(`❌ *Threads download ekhon available na*\n\nThreads er kono free downloader ekhon kaj kore na. Kono notun free method paile add kora hobe.`);
 }
 break;
 
