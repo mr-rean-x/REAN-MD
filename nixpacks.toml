@@ -8,7 +8,6 @@ cmds = ["curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dl
 # Default variables — naam gula age thekei likha thakbe, Railway te giye khali value bosate hobe.
 # Railway dashboard e bosano value ei default ke override korbe.
 [variables]
-BOT_TOKEN = ""
 GROQ_API_KEY = ""
 OPENAI_API_KEY = ""
 GEMINI_API_KEY = ""
