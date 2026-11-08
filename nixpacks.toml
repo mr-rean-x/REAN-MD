@@ -4,3 +4,11 @@ aptPkgs = ["ffmpeg", "curl", "python3", "yt-dlp"]
 # /usr/local/bin comes before /usr/bin in PATH, so this one wins.
 # If the download fails the build still continues with apt's yt-dlp.
 cmds = ["curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp || echo 'yt-dlp binary download failed, using apt version'"]
+
+# Default variables — naam gula age thekei likha thakbe, Railway te giye khali value bosate hobe.
+# Railway dashboard e bosano value ei default ke override korbe.
+[variables]
+BOT_TOKEN = ""
+GROQ_API_KEY = ""
+OPENAI_API_KEY = ""
+GEMINI_API_KEY = ""
