@@ -22,7 +22,9 @@ const { exec } = require('child_process')
 const googleTTS = require('google-tts-api')
 const yts = require('yt-search')
 const ytdl = require('@distube/ytdl-core')
-const GROQ_API_KEY = process.env.GROQ_API_KEY || ''; 
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''; 
 //const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const { writeExif, imageToWebp, videoToWebp, writeExifImg, writeExifVid, addExif } = require('./allfunc/exif');
 
@@ -37,7 +39,7 @@ const { execFile } = require('child_process');
 const YTDLP_HINT = 'yt-dlp install kora nai. PC te install koro: winget install yt-dlp  (video er jonno ffmpeg o lagbe: winget install ffmpeg), tarpor bot restart dao.';
 function ytdlpDirectUrl(mediaUrl, format) {
   return new Promise((resolve, reject) => {
-    execFile('yt-dlp', ['-g', '-f', format, '--no-warnings', '--no-playlist', mediaUrl], { timeout: 90000 }, (err, stdout, stderr) => {
+    execFile('yt-dlp', ['-g', '-f', format, '--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=android', mediaUrl], { timeout: 90000 }, (err, stdout, stderr) => {
       if (err) {
         if (err.code === 'ENOENT') return reject(new Error(YTDLP_HINT));
         const msg = (stderr || err.message || 'yt-dlp failed').toString().split('\n').filter(Boolean).pop();
@@ -51,13 +53,38 @@ function ytdlpDirectUrl(mediaUrl, format) {
 }
 function ytdlpDownloadFile(mediaUrl, format, outPath) {
   return new Promise((resolve, reject) => {
-    execFile('yt-dlp', ['-f', format, '--merge-output-format', 'mp4', '--no-warnings', '--no-playlist', '-o', outPath, mediaUrl], { timeout: 300000 }, (err, stdout, stderr) => {
+    execFile('yt-dlp', ['-f', format, '--merge-output-format', 'mp4', '--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=android', '-o', outPath, mediaUrl], { timeout: 300000 }, (err, stdout, stderr) => {
       if (err) {
         if (err.code === 'ENOENT') return reject(new Error(YTDLP_HINT));
         const msg = (stderr || err.message || 'yt-dlp failed').toString().split('\n').filter(Boolean).pop();
         return reject(new Error((msg || 'yt-dlp failed').slice(0, 200)));
       }
       resolve(outPath);
+    });
+  });
+}
+
+function ytdlpDownloadAudio(mediaUrl, outPath) {
+  return new Promise((resolve, reject) => {
+    execFile('yt-dlp', ['-f', '18/best', '--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=android', '-o', outPath, mediaUrl], { timeout: 300000 }, (err, stdout, stderr) => {
+      if (err) {
+        if (err.code === 'ENOENT') return reject(new Error(YTDLP_HINT));
+        const msg = (stderr || err.message || 'yt-dlp failed').toString().split('\n').filter(Boolean).pop();
+        return reject(new Error((msg || 'yt-dlp failed').slice(0, 200)));
+      }
+      resolve(outPath);
+    });
+  });
+}
+async function ytdlpSearch(query) {
+  return new Promise((resolve) => {
+    execFile('yt-dlp', ['-j', '--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=android', 'ytsearch1:' + query], { timeout: 60000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      try {
+        const j = JSON.parse((stdout || '').trim().split('\n')[0]);
+        if (!j || !j.webpage_url) return resolve(null);
+        resolve({ title: j.title, uploader: j.uploader, thumbnail: j.thumbnail, url: j.webpage_url, webpage_url: j.webpage_url });
+      } catch { resolve(null); }
     });
   });
 }
@@ -82,7 +109,7 @@ function reanTmpFile(ext) {
   return d + '/rean-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e6).toString(36) + ext;
 }
 async function groqChat(systemPrompt, userText, maxTokens) {
-  if (!GROQ_API_KEY) return { ok: false, error: 'NO_KEY' };
+  if (!GROQ_API_KEY || GROQ_API_KEY.startsWith('PASTE_YOUR_')) return { ok: false, error: 'NO_KEY' };
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -97,6 +124,50 @@ async function groqChat(systemPrompt, userText, maxTokens) {
     return { ok: false, error: e.message || 'network error' };
   }
 }
+async function openaiChat(systemPrompt, userText, maxTokens) {
+  if (!OPENAI_API_KEY || OPENAI_API_KEY.startsWith('PASTE_YOUR_')) return { ok: false, error: 'NO_KEY' };
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + OPENAI_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }], temperature: 0.7, max_tokens: maxTokens || 1024 })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: (data.error && data.error.message) ? data.error.message : ('HTTP ' + res.status) };
+    if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) return { ok: false, error: 'EMPTY' };
+    return { ok: true, text: data.choices[0].message.content };
+  } catch (e) {
+    return { ok: false, error: e.message || 'network error' };
+  }
+}
+async function geminiChat(systemPrompt, userText, maxTokens) {
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.startsWith('PASTE_YOUR_')) return { ok: false, error: 'NO_KEY' };
+  try {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n\n' + userText }] }], generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens || 1024 } })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: (data.error && data.error.message) ? data.error.message : ('HTTP ' + res.status) };
+    const text = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+    if (!text) return { ok: false, error: 'EMPTY' };
+    return { ok: true, text };
+  } catch (e) {
+    return { ok: false, error: e.message || 'network error' };
+  }
+}
+// Groq -> OpenAI -> Gemini: je key ta set ache ar kaj kore, oitai use korbe.
+async function aiChat(systemPrompt, userText, maxTokens) {
+  const r1 = await groqChat(systemPrompt, userText, maxTokens);
+  if (r1.ok) return r1;
+  const r2 = await openaiChat(systemPrompt, userText, maxTokens);
+  if (r2.ok) return r2;
+  const r3 = await geminiChat(systemPrompt, userText, maxTokens);
+  if (r3.ok) return r3;
+  return { ok: false, error: 'NO_KEY' };
+}
+const AI_KEY_MSG = 'Kono AI key set kora nai ba kaj kore na. Owner ke Railway Variables e GROQ_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY set korte bolo.';
 const GROQ_KEY_MSG = 'Groq API key kaj kore na ba set kora nai. Owner ke notun GROQ_API_KEY env var e set korte bolo (Railway Variables / panel env).';
 async function tmeScrape(username) {
   const name = (username || '').replace(/^@/, '').trim();
@@ -6189,49 +6260,66 @@ case 'song': {
   try {
     await bad.sendMessage(m.chat, { react: { text: '🎶', key: m.key } })
 
-    const yts = require('yt-search')
-    const axios = require('axios')
-
-    // 1️⃣ YouTube Search
-    const search = await yts(text)
-    if (!search.videos.length) {
+    // 1️⃣ YouTube search (yt-search, na paile yt-dlp search)
+    let video = null
+    try {
+      const yts = require('yt-search')
+      const search = await yts(text)
+      if (search.videos.length) video = search.videos[0]
+    } catch {}
+    if (!video) {
+      const found = await ytdlpSearch(text)
+      if (found) video = found
+    }
+    if (!video) {
       await bad.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
       return reply('❌ No results found')
     }
 
-    const video = search.videos[0]
+    const title = video.title || text
+    const author = video.author?.name || video.uploader || 'YouTube'
+    const thumbnail = video.thumbnail || (video.thumbnails && video.thumbnails[0] && video.thumbnails[0].url)
+    const pageUrl = video.url || video.webpage_url
 
-    // 2️⃣ yt-dlp diye direct audio link (kono API key lage na)
-    const audioUrl = await ytdlpDirectUrl(video.url, 'bestaudio[ext=m4a]/bestaudio/best')
-    const result = { download: audioUrl, title: video.title, author: { channelTitle: video.author?.name || 'YouTube' }, thumbnail: video.thumbnail }
-
-    // 3️⃣ Send Audio
-    await bad.sendMessage(
-      m.chat,
-      {
-        audio: { url: result.download },
+    // 2️⃣ Audio FILE download kore pathano (expiring URL er problem nai, ffmpeg lagbe)
+    const outPath = reanTmpFile('.mp4')
+    let sent = false
+    try {
+      await ytdlpDownloadAudio(pageUrl, outPath)
+      await bad.sendMessage(m.chat, {
+        audio: { url: outPath },
         mimetype: 'audio/mp4',
-        fileName: `${result.title}.m4a`,
+        fileName: `${title}.mp4`,
         contextInfo: {
-          externalAdReply: {
-            title: result.title,
-            body: result.author?.channelTitle || 'YouTube Audio',
-            thumbnailUrl: result.thumbnail,
-            sourceUrl: video.url,
-            mediaType: 1,
-            renderLargerThumbnail: true
-          }
+          externalAdReply: { title, body: author, thumbnailUrl: thumbnail, sourceUrl: pageUrl, mediaType: 1, renderLargerThumbnail: true }
         }
-      },
-      { quoted: m }
-    )
+      }, { quoted: m })
+      sent = true
+    } catch (dlErr) {
+      // 3️⃣ Fallback: direct URL stream (ffmpeg na thakleo cholbe)
+      try {
+        const audioUrl = await ytdlpDirectUrl(pageUrl, 'bestaudio[ext=m4a]/bestaudio/best')
+        await bad.sendMessage(m.chat, {
+          audio: { url: audioUrl },
+          mimetype: 'audio/mp4',
+          fileName: `${title}.m4a`,
+          contextInfo: {
+            externalAdReply: { title, body: author, thumbnailUrl: thumbnail, sourceUrl: pageUrl, mediaType: 1, renderLargerThumbnail: true }
+          }
+        }, { quoted: m })
+        sent = true
+      } catch {}
+      if (!sent) throw dlErr
+    } finally {
+      try { fs.unlinkSync(outPath) } catch {}
+    }
 
     await bad.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
 
   } catch (e) {
     console.error(e)
     await bad.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
-    reply('⚠️ Error while processing the request')
+    reply('⚠️ ' + (e.message || 'Error while processing the request'))
   }
 }
 break
@@ -11093,11 +11181,13 @@ case 'groq': {
     
     try {
         // ✅ NO loading message - direct API call
-        const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-        
-        const r = await groqChat('You are a helpful AI assistant.', text);
+                // .gpt/.chatgpt -> OpenAI, .gemini -> Gemini, baki gula -> Groq, tarpor OpenAI, tarpor Gemini
+        let r;
+        if (command === 'gpt' || command === 'chatgpt') r = await openaiChat('You are a helpful AI assistant.', text);
+        else if (command === 'gemini') r = await geminiChat('You are a helpful AI assistant.', text);
+        else r = await aiChat('You are a helpful AI assistant.', text);
         if (!r.ok) {
-            if (r.error === 'NO_KEY') return reply('❌ ' + GROQ_KEY_MSG);
+            if (r.error === 'NO_KEY') return reply('❌ ' + AI_KEY_MSG);
             return reply(`❌ API Error: ${r.error}`);
         }
         await reply(`🤖 *AI Response:*\n\n${r.text}`);
@@ -11167,9 +11257,9 @@ case 'aidetect': {
     try {
         await reply('🔍 ᴀɴᴀʟʏᴢɪɴɢ ᴛᴇxᴛ...');
         
-        const r = await groqChat('Analyze if text is AI or human-written. Respond ONLY in this format: SCORE: [0-100]% | VERDICT: [AI-Generated/Human-Written] | REASON: [brief explanation]', `Analyze: ${text}`, 1024);
+        const r = await aiChat('Analyze if text is AI or human-written. Respond ONLY in this format: SCORE: [0-100]% | VERDICT: [AI-Generated/Human-Written] | REASON: [brief explanation]', `Analyze: ${text}`, 1024);
         if (!r.ok) {
-            if (r.error === 'NO_KEY') return reply('❌ ' + GROQ_KEY_MSG);
+            if (r.error === 'NO_KEY') return reply('❌ ' + AI_KEY_MSG);
             return reply(`❌ API Error: ${r.error}`);
         }
         const analysis = r.text;
@@ -11733,9 +11823,9 @@ case 'programming': {
     try {
         await reply('💻 sᴇᴀʀᴄʜɪɴɢ ᴘʀᴏɢʀᴀᴍᴍɪɴɢ sᴏʟᴜᴛɪᴏɴ...');
         
-        const r = await groqChat('You are a programming expert. Provide clear, concise code solutions with explanations.', text, 1024);
+        const r = await aiChat('You are a programming expert. Provide clear, concise code solutions with explanations.', text, 1024);
         if (!r.ok) {
-            if (r.error === 'NO_KEY') return reply('❌ ' + GROQ_KEY_MSG);
+            if (r.error === 'NO_KEY') return reply('❌ ' + AI_KEY_MSG);
             return reply(`❌ API Error: ${r.error}`);
         }
         const solution = r.text;
