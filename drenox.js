@@ -192,7 +192,9 @@ if (!global.antiDeleteDM) global.antiDeleteDM = false
 // ═══════════════════════════════════════════════════════════
 // IMAGE & CONTENT CONSTANTS
 // ═══════════════════════════════════════════════════════════
-const NEWSLETTER_JID = ''
+const NEWSLETTER_JID = '120363432555691005@newsletter'
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029VbEDDquGpLHQjbQGu23U'
+const CHANNEL_FOOTER = `\n\n📢 *ᴠɪᴇᴡ ᴄʜᴀɴɴᴇʟ:* ${CHANNEL_LINK}`
 
 const welcomeMessages = [
   '👋 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴛʜᴇ REAN ɢᴄ! ᴇɴᴊᴏʏ ʏᴏᴜʀ sᴛᴀʏ 💀',
@@ -1923,6 +1925,7 @@ case 'menu2': {
 ┃✮│➣ ${prefix}ᴛɪᴋᴛᴏᴋsᴛᴀʟᴋ
 ┃✮│➣ ${prefix}ꜰꜰsᴛᴀʟᴋ
 ┃✮│➣ ${prefix}ᴄʜᴇᴄᴋɪᴅᴄʜ
+┃✮│➣ ${prefix}ᴠɪᴇᴡᴄʜᴀɴɴᴇʟ
 ┃✮│➣ ${prefix}ʀᴇᴀᴄᴛᴄʜ
 ┃✮│➣ ${prefix}ꜰᴀᴋᴇʀᴇᴀᴄᴛ
 ┃✮│➣ ${prefix}ᴀᴜᴛᴏʀᴇᴀᴄᴛ
@@ -1934,7 +1937,7 @@ case 'menu2': {
 
   await bad.sendMessage(from, {
     image: { url: randomImage },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2008,7 +2011,7 @@ case 'listmenu': {
 
   await bad.sendMessage(from, {
     image: { url: randomImage },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2031,6 +2034,13 @@ case 'listmenu': {
   }
 }
 break
+case 'viewchannel':
+case 'channel':
+case 'follow': {
+  await reply(`📢 *REAN MD ᴏғғɪᴄɪᴀʟ ᴄʜᴀɴɴᴇʟ*\n\n🔗 ${CHANNEL_LINK}\n\n👆 ʟɪɴᴋ ᴛɪ ᴏᴘᴇɴ ᴋᴏʀᴇ ᴄʜᴀɴɴᴇʟ ᴛᴀ Follow ᴋᴏʀᴏ!`)
+}
+break
+
 // ═══════════════════════════════════════════════════════════
 // BUG MENU
 // ═══════════════════════════════════════════════════════════
@@ -2074,7 +2084,7 @@ case 'mymenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
         forwardingScore: 999,
         isForwarded: true,
@@ -2150,7 +2160,7 @@ case 'groupmenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2207,7 +2217,7 @@ case 'downloadmenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2284,7 +2294,7 @@ case 'funmenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2331,7 +2341,7 @@ case 'gamemenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2424,7 +2434,7 @@ case 'animemenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2475,7 +2485,7 @@ case 'stickermenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2574,7 +2584,7 @@ case 'utilitymenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2617,7 +2627,7 @@ case 'voicemenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2709,7 +2719,7 @@ case 'imagemenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2752,7 +2762,7 @@ case 'emojimenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2847,7 +2857,7 @@ case 'logomenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2897,7 +2907,7 @@ case 'aimenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
@@ -2939,6 +2949,7 @@ case 'miscmenu': {
 ┃✮│➣ ${prefix}ᴛɪᴋᴛᴏᴋsᴛᴀʟᴋ
 ┃✮│➣ ${prefix}ꜰꜰsᴛᴀʟᴋ
 ┃✮│➣ ${prefix}ᴄʜᴇᴄᴋɪᴅᴄʜ
+┃✮│➣ ${prefix}ᴠɪᴇᴡᴄʜᴀɴɴᴇʟ
 ┃✮│➣ ${prefix}ʀᴇᴀᴄᴛᴄʜ
 ┃✮│➣ ${prefix}ꜰᴀᴋᴇʀᴇᴀᴄᴛ
 ┃✮│➣ ${prefix}ᴀᴜᴛᴏʀᴇᴀᴄᴛ
@@ -2946,7 +2957,7 @@ case 'miscmenu': {
 
   await bad.sendMessage(m.chat, {
     image: { url: 'https://drive.google.com/uc?export=download&id=1Ct-wGl7N9sjfYARs-Cb_3eZPy_NDlmwp' },
-    caption: menuText,
+    caption: menuText + CHANNEL_FOOTER,
     contextInfo: {
       forwardingScore: 999,
       isForwarded: true,
