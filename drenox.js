@@ -513,11 +513,20 @@ async function getChatGPTResponse(prompt, userId = null, groupId = null) {
 }
 
 async function getClaudeResponse(prompt) {
+  // Groq first (user's key) — toxxic chatgpt endpoint returns junk/error strings, so validate it
+  try {
+    const r = await groqChat('You are a helpful WhatsApp chatbot. Reply briefly and naturally.', prompt, 512)
+    if (r.ok && r.text) return r.text
+  } catch {}
   try {
     const url = `https://api-toxxic.zone.id/api/ai/chatgpt?prompt=${encodeURIComponent(prompt)}`
     const response = await fetch(url, { method: "GET" })
     const data = await response.json()
-    return data.data || data.result || data.response || data.message || null
+    const t = data.data || data.result || data.response || data.message || null
+    if (!t || typeof t !== 'string') return null
+    const junk = ['older version', 'An error occurred', '[!]', 'request to https://']
+    if (junk.some(b => t.includes(b))) return null
+    return t
   } catch (err) {
     return null
   }
@@ -3288,7 +3297,7 @@ case 'siminfo': {
         await bad.sendMessage(from, { text: txt }, { quoted: m })
 
     } catch (e) {
-        reply('❌ Data not found from NADRA')
+        reply('❌ SIM/CNIC lookup service ta ekhon kaj kore na (provider down). Pore abar try koro.')
     }
 }
 break
@@ -3319,7 +3328,7 @@ case 'cnicinfo': {
         await bad.sendMessage(from, { text: txt }, { quoted: m })
 
     } catch (e) {
-        reply('❌ Data not found from NADRA')
+        reply('❌ SIM/CNIC lookup service ta ekhon kaj kore na (provider down). Pore abar try koro.')
     }
 }
 break
@@ -3452,7 +3461,7 @@ break
 case 'addowner':
 case 'setowner': {
   if (!isCreator) return reply("╭━━〔 ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ 〕━━┈⊷\n┃◈ ᴏᴡɴᴇʀ ᴏɴʟʏ ᴄᴏᴍᴍᴀɴᴅ\n╰━━━━━━━━━━━━━━━┈⊷")
-  if (!args[0]) return reply(`ᴜsᴀɢᴇ: ${prefix}${command} 234xxx`)
+  if (!text) return reply(`ᴜsᴀɢᴇ: ${prefix}${command} 234xxx`)
   
   let number = text.replace(/[^0-9]/g, '')
   let checkNumber = await bad.onWhatsApp(number + "@s.whatsapp.net")
@@ -3477,7 +3486,7 @@ break
 case 'delowner':
 case 'delown': {
   if (!isCreator) return reply("╭━━〔 ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ 〕━━┈⊷\n┃◈ ᴏᴡɴᴇʀ ᴏɴʟʏ ᴄᴏᴍᴍᴀɴᴅ\n╰━━━━━━━━━━━━━━━┈⊷")
-  if (!args[0]) return reply(`ᴜsᴀɢᴇ: ${prefix}${command} 234xxx`)
+  if (!text) return reply(`ᴜsᴀɢᴇ: ${prefix}${command} 234xxx`)
   
   let number = text.replace(/[^0-9]/g, '')
   const removeJid = number + "@s.whatsapp.net"
@@ -4167,7 +4176,7 @@ case 'cartoon': {
     let uploadImage = require('./allfunc/Data6')
     let imageUrl = await uploadImage(media)
     
-    const apiUrl = `https://api.princetechn.com/toanime?url=${encodeURIComponent(imageUrl)}`
+    const apiUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent('anime style portrait, vibrant colors')}?image=${encodeURIComponent(imageUrl)}&width=1024&height=1024&model=flux&nologo=true`
     
     await bad.sendMessage(m.chat, {
       image: { url: apiUrl },
@@ -4247,7 +4256,7 @@ case 'listonline': {
     if (!m.isGroup) return reply("ɢʀᴏᴜᴘ ᴄᴏᴍᴍᴀɴᴅ ᴏɴʟʏ.")
     if (!isCreator) return reply("ᴏᴡɴᴇʀ ᴏɴʟʏ.")
     
-    let id = args && /\d+\-\d+@g.us/.test(args[1]) ? args[0] : m.chat
+    let id = args && /\d+\-\d+@g.us/.test(args[1]) ? args[1] : m.chat
     let online = [...Object.keys(store.presences[id] || {}), botNumber]
     let liston = 1
     bad.sendText(m.chat, '「ᴏɴʟɪɴᴇ ᴍᴇᴍʙᴇʀs」\n\n' + online.map(v => `${liston++} . @` + v.replace(/@.+/, '')).join`\n`, m, { mentions: online })
@@ -4409,9 +4418,9 @@ break;
 case 'join': {
     if (!isCreator) return reply("ᴏᴡɴᴇʀ ᴏɴʟʏ.")
     if (!text) return reply(`ᴇxᴀᴍᴘʟᴇ: *${prefix + command} <ɢʀᴏᴜᴘ ʟɪɴᴋ>*`)
-    if (!isUrl(args[1]) || !args[0].includes('whatsapp.com')) return reply("ɪɴᴠᴀʟɪᴅ ɢʀᴏᴜᴘ ʟɪɴᴋ!")
+    if (!isUrl(args[1]) || !args[1].includes('whatsapp.com')) return reply("ɪɴᴠᴀʟɪᴅ ɢʀᴏᴜᴘ ʟɪɴᴋ!")
     
-    let result = args[0].split('https://chat.whatsapp.com/')[1]
+    let result = args[1].split('https://chat.whatsapp.com/')[1]
     await bad.groupAcceptInvite(result)
     reply("sᴜᴄᴄᴇssғᴜʟʟʏ ᴊᴏɪɴᴇᴅ ᴛʜᴇ ɢʀᴏᴜᴘ ✅")
 }
@@ -4744,9 +4753,9 @@ case 'pickupline': {
     let line;
     
     try {
-      // Primary API
-      const response = await axios.get('https://vinuxd.vercel.app/api/pickup');
-      line = response.data.pickup || response.data.pickupline || response.data.result;
+      // Primary API (vinuxd is dead — DEPLOYMENT_NOT_FOUND, rizzapi verified live)
+      const response = await axios.get('https://rizzapi.vercel.app/random');
+      line = response.data.text || response.data.line;
     } catch {
       try {
         // Backup API 1
@@ -5273,6 +5282,8 @@ break
 case 'ttstalk':
 case 'tiktokstalk': {
     if (!text) return reply(`📱 *TikTok Stalk*\n\nExample: .ttstalk khaby.lame\n\nUsername bina @ ke likho!`);
+    // TikTok user lookup er kono free provider ekhon kaj kore na (omegatech bondho, tikwm blocked) — fail fast
+    return reply('❌ *ᴛɪᴋᴛᴏᴋ sᴛᴀʟᴋ ᴇᴋʜᴏɴ ᴋᴀᴊ ᴋᴏʀᴇ ɴᴀ।*\n\nTikTok user info deoar kono free service ekhon available na. Pore abar try koro.')
     
     try {
         await reply('⏳ Fetching TikTok data...');
@@ -5595,7 +5606,7 @@ case 'teximg': case 'teximage': case 'maketext': {
   await loading()
   
   try {
-    const apiUrl = `https://omegatech-api.dixonomega.tech//api/ai/txt2img?prompt=${encodeURIComponent(text)}+&model=1`
+    const apiUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(text)}?width=1024&height=1024&model=flux&nologo=true`
     
     await bad.sendMessage(m.chat, {
       image: { url: apiUrl },
@@ -5629,11 +5640,9 @@ case 'logo2': case 'makelogo': case 'createlogo': {
     
     const randomStyle = styles[Math.floor(Math.random() * styles.length)]
     
-    // Try multiple APIs
+    // Pollinations (verified live) — omegatech/obito/princetechn text-effect APIs are all dead/blocked
     const apis = [
-      `https://omegatech-api.dixonomega.tech/api/Maker/ephoto-1917?text=${encodedText}`,
-      `https://obito-mr-apis.vercel.app/api/maker/${randomStyle.endpoint}?text=${encodedText}`,
-      `https://api.princetechn.com/api/textpro/${randomStyle.endpoint}?text=${encodedText}`
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(randomStyle.name + ' style glowing text logo "' + text + '"')}?width=1024&height=512&model=flux&nologo=true`
     ]
     
     let success = false
@@ -5652,8 +5661,8 @@ case 'logo2': case 'makelogo': case 'createlogo': {
     }
     
     if (!success) {
-      // Fallback to working Omega API
-      const fallbackUrl = `https://omegatech-api.dixonomega.tech/api/Maker/neon-text?text=${encodedText}`
+      // Fallback: Pollinations neon logo
+      const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent('neon glowing text logo "' + text + '"')}?width=1024&height=512&model=flux&nologo=true`
       await bad.sendMessage(m.chat, {
         image: { url: fallbackUrl },
         caption: `*ʟᴏɢᴏ ᴍᴀᴋᴇʀ - NEON sᴛʏʟᴇ*\n\n📝 ${text}\n\n> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠︎︎`
@@ -5679,7 +5688,7 @@ case 'logo': case 'advancedlogo': {
     const combinedText = encodeURIComponent(`${line1} ${line2}`)
     
     // Use working Omega API
-    const apiUrl = `https://omegatech-api.dixonomega.tech/api/tools/ba-logo?textL=${combinedText}`
+    const apiUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent('bold 3D logo text "' + line1 + ' ' + line2 + '"')}?width=1024&height=512&model=flux&nologo=true`
     
     await bad.sendMessage(m.chat, {
       image: { url: apiUrl },
@@ -6998,16 +7007,31 @@ break
 case 'joke': case 'dadkjoke': {
   await loading()
   
+  // official-joke-api is 503 — try it, then jokeapi.dev, then icanhazdadjoke (all verified live)
+  let jokeText = ''
   try {
     const res = await fetch('https://official-joke-api.appspot.com/random_joke')
     const data = await res.json()
-    
-    if (data.setup && data.punchline) {
-      reply(`*◆ ʀᴀɴᴅᴏᴍ ᴊᴏᴋᴇ*\n\n${data.setup}\n\n${data.punchline} 😂\n\n> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠︎︎`)
-    } else {
-      throw new Error('No joke found')
-    }
-  } catch (err) {
+    if (data.setup && data.punchline) jokeText = `${data.setup}\n\n${data.punchline}`
+  } catch {}
+  if (!jokeText) {
+    try {
+      const res = await fetch('https://v2.jokeapi.dev/joke/Any?type=single&blacklistFlags=nsfw,racist,sexist')
+      const data = await res.json()
+      if (data.joke) jokeText = data.joke
+      else if (data.setup && data.delivery) jokeText = `${data.setup}\n\n${data.delivery}`
+    } catch {}
+  }
+  if (!jokeText) {
+    try {
+      const res = await fetch('https://icanhazdadjoke.com/', { headers: { 'Accept': 'application/json' } })
+      const data = await res.json()
+      if (data.joke) jokeText = data.joke
+    } catch {}
+  }
+  if (jokeText) {
+    reply(`*◆ ʀᴀɴᴅᴏᴍ ᴊᴏᴋᴇ*\n\n${jokeText} 😂\n\n> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠︎︎`)
+  } else {
     reply('❌ ғᴀɪʟᴇᴅ ᴛᴏ ғᴇᴛᴄʜ ᴊᴏᴋᴇ.')
   }
 }
@@ -7017,11 +7041,22 @@ case 'quote': case 'quotes': {
   await loading()
   
   try {
-    const res = await fetch('https://api.quotable.io/random')
-    const data = await res.json()
-    
-    if (data.content) {
-      reply(`*◆ ɪɴsᴘɪʀᴀᴛɪᴏɴᴀʟ ǫᴜᴏᴛᴇ*\n\n"${data.content}"\n\n— ${data.author}\n\n> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠︎︎`)
+    // quotable.io is dead (no DNS) — zenquotes first, dummyjson as fallback (both verified live)
+    let content = '', author = ''
+    try {
+      const res = await fetch('https://zenquotes.io/api/random')
+      const data = await res.json()
+      if (data && data[0] && data[0].q) { content = data[0].q; author = data[0].a || '' }
+    } catch {}
+    if (!content) {
+      try {
+        const res = await fetch('https://dummyjson.com/quotes/random')
+        const data = await res.json()
+        if (data && data.quote) { content = data.quote; author = data.author || '' }
+      } catch {}
+    }
+    if (content) {
+      reply(`*◆ ɪɴsᴘɪʀᴀᴛɪᴏɴᴀʟ ǫᴜᴏᴛᴇ*\n\n"${content}"\n\n— ${author}\n\n> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠︎︎`)
     } else {
       throw new Error('No quote found')
     }
@@ -7206,6 +7241,7 @@ break
 
 case 'sora':
 case 'soraai': {
+  return reply('❌ *Sora AI video ekhon available na.*\n\nVideo generation provider (omegatech) bondho hoye gese. Free AI video generation er kono working provider ekhon nai.')
   if (!text) return reply(`*ᴜsᴀɢᴇ:* ${prefix}sora <prompt>\n\nᴇxᴀᴍᴘʟᴇ: ${prefix}sora cat walking in space\n\n📐 ᴀsᴘᴇᴄᴛ ʀᴀᴛɪᴏs:\n• Add "vertical" or "9:16" for vertical\n• Add "square" or "1:1" for square\n• Default is 16:9 (landscape)`)
   
   let prompt = text.trim()
@@ -7255,6 +7291,7 @@ break
 
 case 'sora2':
 case 'sorav2': {
+  return reply('❌ *Sora 2 AI video ekhon available na.*\n\nVideo generation provider (omegatech) bondho hoye gese. Free AI video generation er kono working provider ekhon nai.')
   if (!text) return reply(`*ᴜsᴀɢᴇ:* ${prefix}sora2 <prompt>\n\nᴇxᴀᴍᴘʟᴇ: ${prefix}sora2 cat walking in space`)
   
   let prompt = text.trim()
@@ -7338,6 +7375,7 @@ case 'sorav2': {
 }
 break
 case 'veo3': {
+  return reply('❌ *Veo 3 AI video ekhon available na.*\n\nVideo generation provider (omegatech) bondho hoye gese. Free AI video generation er kono working provider ekhon nai.')
   if (!text) return reply(`*🎬 ᴠᴇᴏ 3 - ᴀɪ ᴠɪᴅᴇᴏ ɢᴇɴᴇʀᴀᴛᴏʀ*
 
 📝 ᴜsᴀɢᴇ:
@@ -9055,7 +9093,7 @@ case 'qc': {
     profilePic = 'Telegrammmm'
   }
   
-  const url = `https://www.laurine.site/api/generator/qc?text=${encodeURIComponent(quote)}&name=${encodeURIComponent(name)}&photo=${encodeURIComponent(profilePic)}`
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent('minimal quote card, elegant typography, text: "' + quote + '" — ' + name)}?width=512&height=512&model=flux&nologo=true`
   
   try {
     await bad.sendImageAsSticker(m.chat, url, m, {
@@ -9073,14 +9111,7 @@ case 'freact': {
   if (!isCreator && !isPremium) return reply('ᴘʀᴇᴍɪᴜᴍ ᴏʀ ᴏᴡɴᴇʀ ᴏɴʟʏ.')
   
   if (!text.includes('|')) {
-    return reply(`*◆ ғᴀᴋᴇ ʀᴇᴀᴄᴛ*
-
-ᴜsᴀɢᴇ: ${prefix + command} <ᴄʜᴀɴɴᴇʟ-ʟɪɴᴋ>|<ᴇᴍᴏᴊɪ>
-
-ᴇxᴀᴍᴘʟᴇ:
-${prefix + command} and  |😂😍🔥
-
-ɴᴏᴛᴇ: ʏᴏᴜ ᴄᴀɴ ᴜsᴇ ᴍᴜʟᴛɪᴘʟᴇ ᴇᴍᴏᴊɪs!`)
+    return reply(`*◆ ᴄʜᴀɴɴᴇʟ ʀᴇᴀᴄᴛ*\n\nᴜsᴀɢᴇ: ${prefix + command} <ᴄʜᴀɴɴᴇʟ-ᴘᴏsᴛ-ʟɪɴᴋ>|<ᴇᴍᴏᴊɪ>\n\nᴇxᴀᴍᴘʟᴇ:\n${prefix + command} https://whatsapp.com/channel/xxxx/123 |😂\n\nɴᴏᴛᴇ: ʙᴏᴛ ɴɪᴊᴇʀ ᴀᴄᴄᴏᴜɴᴛ ᴛʜᴇᴋᴇ 1ᴛᴀ ʀᴇᴀᴄᴛ ᴅɪʙᴇ।`)
   }
   
   const [postLink, reacts] = text.split('|').map(v => v.trim())
@@ -9089,64 +9120,22 @@ ${prefix + command} and  |😂😍🔥
     return reply('❌ ɪɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ʟɪɴᴋ!')
   }
   
+  const emoji = [...reacts][0]
+  if (!emoji) return reply('❌ ᴇᴍᴏᴊɪ ᴅᴀᴏ!')
+  
   await loading()
   
   try {
-    // Fixed API URL
-    const url = `https://chreact.princetechn.com/api?post_link=${encodeURIComponent(postLink)}&reacts=${encodeURIComponent(reacts)}`
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
-    })
-    
-    const text = await response.text()
-    let data
-    
-    try {
-      data = JSON.parse(text)
-    } catch {
-      // If response is not JSON, check if it's a success message
-      if (text.toLowerCase().includes('success') || response.ok) {
-        return reply(`✅ *ғᴀᴋᴇ ʀᴇᴀᴄᴛɪᴏɴs sᴇɴᴛ!*
-
-📱 ᴄʜᴀɴɴᴇʟ: ${postLink}
-😊 ʀᴇᴀᴄᴛɪᴏɴs: ${reacts}
-✨ sᴛᴀᴛᴜs: sᴜᴄᴄᴇss
-
-> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠`)
-      }
-      throw new Error('ɪɴᴠᴀʟɪᴅ ᴀᴘɪ ʀᴇsᴘᴏɴsᴇ')
-    }
-    
-    if (data.success || response.ok) {
-      reply(`✅ *ғᴀᴋᴇ ʀᴇᴀᴄᴛɪᴏɴs sᴇɴᴛ!*
-
-📱 ᴄʜᴀɴɴᴇʟ: ${postLink}
-😊 ʀᴇᴀᴄᴛɪᴏɴs: ${reacts}
-✨ sᴛᴀᴛᴜs: sᴜᴄᴄᴇss
-
-> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠`)
-    } else {
-      reply(`❌ *ғᴀɪʟᴇᴅ ᴛᴏ sᴇɴᴅ ʀᴇᴀᴄᴛɪᴏɴs*
-
-ᴇʀʀᴏʀ: ${data.message || 'sᴇʀᴠɪᴄᴇ ᴜɴᴀᴠᴀɪʟᴀʙʟᴇ'}
-
-ᴛɪᴘs:
-• ᴍᴀᴋᴇ sᴜʀᴇ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ᴘᴏsᴛ ʟɪɴᴋ ɪs ᴠᴀʟɪᴅ
-• ᴜsᴇ ᴠᴀʟɪᴅ ᴇᴍᴏᴊɪs
-• ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ (ᴀᴘɪ ᴍɪɢʜᴛ ʙᴇ ᴅᴏᴡɴ)`)
-    }
-    
-  } catch (error) {
-    console.error('ғᴀᴋᴇ ʀᴇᴀᴄᴛ ᴇʀʀᴏʀ:', error)
-    reply(`⚠️ *sᴇʀᴠɪᴄᴇ ᴛᴇᴍᴘᴏʀᴀʀɪʟʏ ᴜɴᴀᴠᴀɪʟᴀʙʟᴇ*
-
-ᴛʜᴇ ғᴀᴋᴇ ʀᴇᴀᴄᴛ ᴀᴘɪ ɪs ᴄᴜʀʀᴇɴᴛʟʏ ᴅᴏᴡɴ.
-
-ᴀʟᴛᴇʀɴᴀᴛɪᴠᴇ: ᴜsᴇ \`${prefix}reactch\` ғᴏʀ ʀᴇᴀʟ ʀᴇᴀᴄᴛɪᴏɴs!`)
+    const channelId = postLink.split('/')[4]
+    const messageId = postLink.split('/')[5]
+    if (!channelId || !messageId) return reply('❌ ʟɪɴᴋ ᴛᴀ ᴋᴏɴᴏ ᴘᴏsᴛ ᴇʀ ʟɪɴᴋ ʜᴏᴛᴇ ʜᴏʙᴇ (ᴄʜᴀɴɴᴇʟ ʟɪɴᴋ ɴᴀ)।')
+    const channelInfo = await bad.newsletterMetadata("invite", channelId)
+    if (!channelInfo || !channelInfo.id) return reply('❌ ᴄʜᴀɴɴᴇʟ ᴘᴀᴏʏᴀ ᴊᴀʏ ɴᴀɪ।')
+    await bad.newsletterReactMessage(channelInfo.id, messageId, emoji)
+    reply(`✅ *ʀᴇᴀᴄᴛɪᴏɴ sᴇɴᴛ!*\n\n📱 ᴄʜᴀɴɴᴇʟ: ${channelInfo.name || postLink}\n😊 ʀᴇᴀᴄᴛɪᴏɴ: ${emoji}\n\n> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ☠︎︎ REAN MD ☠`)
+  } catch (err) {
+    console.error('fakereact error:', err)
+    reply('❌ ʀᴇᴀᴄᴛ ᴘᴀᴛʜᴀᴛᴇ ᴘᴀʀɪ ɴᴀɪ। ᴘᴏsᴛ ʟɪɴᴋ ᴛᴀ ᴛʜɪᴋ ᴀᴄʜᴇ ᴋɪɴᴀ ᴅᴇᴋʜᴏ।')
   }
 }
 break
