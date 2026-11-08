@@ -83,7 +83,7 @@ async function ytdlpSearch(query) {
       try {
         const j = JSON.parse((stdout || '').trim().split('\n')[0]);
         if (!j || !j.webpage_url) return resolve(null);
-        resolve({ title: j.title, uploader: j.uploader, thumbnail: j.thumbnail, url: j.webpage_url, webpage_url: j.webpage_url });
+        resolve({ title: j.title, uploader: j.uploader, thumbnail: j.thumbnail, duration: j.duration, url: j.webpage_url, webpage_url: j.webpage_url });
       } catch { resolve(null); }
     });
   });
@@ -6281,7 +6281,19 @@ case 'song': {
     const thumbnail = video.thumbnail || (video.thumbnails && video.thumbnails[0] && video.thumbnails[0].url)
     const pageUrl = video.url || video.webpage_url
 
-    // 2️⃣ Audio FILE download kore pathano (expiring URL er problem nai, ffmpeg lagbe)
+    // Info card (onnoder bot er moto) — thumbnail + title + duration, download er age
+    const durSec = (video.duration && typeof video.duration === 'object' ? video.duration.seconds : video.duration) || 0
+    const durStr = durSec ? Math.floor(durSec / 60) + ':' + String(Math.floor(durSec % 60)).padStart(2, '0') : (video.timestamp || 'N/A')
+    if (thumbnail) {
+      try {
+        await bad.sendMessage(m.chat, {
+          image: { url: thumbnail },
+          caption: `╭━━━〔 🎵 *AUDIO PLAYER* 🎵 〕━━━╮\n\n🎧 *Title:* ${title}\n⏱️ *Duration:* ${durStr}\n\n⏳ *Downloading audio...*\n\n╰━━━━━━━━━━━━━━━━━╯`
+        }, { quoted: m })
+      } catch {}
+    }
+
+    // 2️⃣ Audio FILE download kore pathano (expiring URL er problem nai)
     const outPath = reanTmpFile('.mp4')
     let sent = false
     try {
