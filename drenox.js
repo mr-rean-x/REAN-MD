@@ -126,6 +126,106 @@ async function resolveUrl(u) {
   } catch { return u; }
 }
 
+// ── REAN MD download fallbacks (2026-11-11): yt-dlp Railway IP te block hole backup rasta ──
+// Build tag — error message e thakbe, jate screenshot dekhe bojha jay kon code cholse.
+const REAN_BUILD = 'v2026.11.11-dl3';
+
+// URL theke file download kore path e save koro (redirect follow kore)
+async function downloadToFile(fileUrl, outPath) {
+  const res = await axios.get(fileUrl, { responseType: 'stream', timeout: 300000, maxRedirects: 5, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36' } });
+  const w = fs.createWriteStream(outPath);
+  await new Promise((resolve, reject) => { res.data.pipe(w); w.on('finish', resolve); w.on('error', reject); res.data.on('error', reject); });
+  return outPath;
+}
+
+// Facebook video ID ber koro (watch / reel / videos / share / fb.watch — sob format)
+async function fbVideoId(pageUrl) {
+  let m = (pageUrl || '').match(/(?:\/watch\/?\?v=|\/reel\/|\/videos\/)(\d{6,})/);
+  if (m) return m[1];
+  try {
+    const r = await axios.get(pageUrl, { timeout: 30000, maxRedirects: 5, headers: { 'User-Agent': 'facebookexternalhit/1.1' }, validateStatus: () => true });
+    const finalUrl = (r.request && r.request.res && r.request.res.responseUrl) || '';
+    m = (finalUrl || '').match(/(?:\/watch\/?\?v=|\/reel\/|\/videos\/)(\d{6,})/);
+    if (m) return m[1];
+    const html = (r.data || '').toString();
+    m = html.match(/"video_id"\s*:\s*"(\d{6,})"/) || html.match(/video_id["']?\s*:\s*["']?(\d{6,})/);
+    if (m) return m[1];
+  } catch {}
+  return null;
+}
+
+// Facebook er nijer embed player theke direct mp4 URL nao (yt-dlp chara — hd prefer, naile sd)
+async function fbEmbedVideoUrl(videoId) {
+  try {
+    const r = await axios.get('https://www.facebook.com/video/embed?video_id=' + encodeURIComponent(videoId), { timeout: 30000, headers: { 'User-Agent': 'facebookexternalhit/1.1' }, validateStatus: () => true });
+    const html = (r.data || '').toString();
+    const pick = (key) => {
+      const mm = html.match(new RegExp(key + '":"((?:[^"\\\\]|\\\\.)*)"'));
+      if (!mm) return null;
+      let u = mm[1].replace(/\\\//g, '/');
+      u = u.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+      return u;
+    };
+    return pick('hd_src') || pick('sd_src') || null;
+  } catch { return null; }
+}
+
+// Facebook video file: yt-dlp primary, embed-endpoint fallback (reel e embed kaj kore na — tokhon yt-dlp i vorosha)
+async function fbDownloadVideo(fbUrl, outFile) {
+  try {
+    const page = await resolveUrl(fbUrl);
+    await ytdlpDownloadFile(page, 'best[ext=mp4]/best', outFile);
+    return;
+  } catch (e) {
+    const vid = await fbVideoId(fbUrl);
+    if (!vid) throw e;
+    const emb = await fbEmbedVideoUrl(vid);
+    if (!emb) throw e;
+    await downloadToFile(emb, outFile);
+  }
+}
+
+// Instagram media vxinstagram proxy diye nao (onno server theke ane — Railway IP block holeo cholbe)
+async function igVxMedia(igUrl) {
+  const vx = (igUrl || '').replace(/^https?:\/\/(www\.)?instagram\.com/i, 'https://www.vxinstagram.com');
+  const r = await axios.get(vx, { timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36' }, validateStatus: () => true });
+  const html = (r.data || '').toString();
+  const vid = html.match(/og:video[^>]*content=["']([^"']+)["']/);
+  if (vid) return { type: 'video', url: vid[1] };
+  const img = html.match(/og:image[^>]*content=["']([^"']+)["']/);
+  if (img) return { type: 'image', url: img[1] };
+  return null;
+}
+
+// Instagram media: yt-dlp primary, vxinstagram fallback
+async function igGetMedia(igUrl) {
+  let lastErr = null;
+  try {
+    const info = await ytdlpInfo(igUrl);
+    if (info && info.url) {
+      const ext = (info.ext || '').toLowerCase();
+      const kind = (['mp4', 'webm', 'mov', 'm4v'].includes(ext) || (info.url || '').includes('.mp4')) ? 'video' : 'image';
+      return { kind, url: info.url, title: info.title || info.uploader || 'Instagram', uploader: info.uploader || 'N/A', via: 'ytdlp' };
+    }
+  } catch (e) { lastErr = e; }
+  try {
+    const vx = await igVxMedia(igUrl);
+    if (vx) return { kind: vx.type, url: vx.url, title: 'Instagram', uploader: 'N/A', via: 'vx' };
+  } catch (e) { if (!lastErr) lastErr = e; }
+  throw lastErr || new Error('Instagram media pawa jay nai');
+}
+
+// Instagram video file: yt-dlp primary, vx download fallback
+async function igDownloadVideo(igUrl, media, outFile) {
+  if (media.via === 'vx') { await downloadToFile(media.url, outFile); return; }
+  try { await ytdlpDownloadFile(igUrl, 'best[ext=mp4]/best', outFile); }
+  catch (e) {
+    const vx = await igVxMedia(igUrl);
+    if (!vx || vx.type !== 'video') throw e;
+    await downloadToFile(vx.url, outFile);
+  }
+}
+
 // ── REAN MD audit-fix helpers ──
 const FFMPEG_HINT = 'ffmpeg install kora nai. PC te install koro: winget install ffmpeg, tarpor bot restart dao.';
 function ffmpegConvert(inPath, outPath, extraArgs) {
@@ -6343,7 +6443,8 @@ case 'song': {
     const outPath = reanTmpFile('.mp4')
     let sent = false
     try {
-      await ytdlpDownloadAudio(pageUrl, outPath)
+      try { await ytdlpDownloadAudio(pageUrl, outPath) }
+      catch (e1) { await ytdlpDownloadAudio(pageUrl, outPath) } // 1 bar retry (transient fail hole)
       await bad.sendMessage(m.chat, {
         audio: { url: outPath },
         mimetype: 'audio/mp4',
@@ -6377,7 +6478,9 @@ case 'song': {
   } catch (e) {
     console.error(e)
     await bad.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
-    reply('⚠️ ' + (e.message || 'Error while processing the request'))
+    const em = (e.message || 'Error while processing the request');
+    const isBot = /sign in to confirm|not a bot|login required/i.test(em);
+    reply('⚠️ ' + em + (isBot ? '\n\n⚠️ YouTube Railway er IP block korse mone hoy. Latest code e Redeploy dao (naile PC/phone e chalao).' : '') + `\n\n[build ${REAN_BUILD}]`)
   }
 }
 break
@@ -6538,18 +6641,14 @@ case "igdl": {
     try {
         await bad.sendMessage(m.chat, {react: {text: '⏳', key: m.key}});
         
-        // yt-dlp diye Instagram media (kono API key lage na — NexOracle dead)
-        const info = await ytdlpInfo(text);
-        const mediaUrl = info.url || '';
-        const ext = (info.ext || '').toLowerCase();
-        const title = info.title || info.uploader || 'Instagram';
-        const caption = `╭━━━〔 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮\n\n📝 *ᴛɪᴛʟᴇ:* ${title}\n👤 *ᴜsᴇʀ:* ${info.uploader || 'N/A'}\n\n╰━━━━━━━━━━━━━━━━━╯`;
-        const isVideo = ['mp4', 'webm', 'mov', 'm4v'].includes(ext) || mediaUrl.includes('.mp4');
-        if (isVideo) {
+        // yt-dlp primary, vxinstagram fallback (Railway IP block holeo cholbe)
+        const media = await igGetMedia(text);
+        const caption = `╭━━━〔 *ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* 〕━━━╮\n\n📝 *ᴛɪᴛʟᴇ:* ${media.title}\n👤 *ᴜsᴇʀ:* ${media.uploader}\n\n╰━━━━━━━━━━━━━━━━━╯`;
+        if (media.kind === 'video') {
             const outFile = path.join(__dirname, 'tmp', `ig_${Date.now()}.mp4`);
             fs.mkdirSync(path.join(__dirname, 'tmp'), { recursive: true });
             try {
-                await ytdlpDownloadFile(text, 'best[ext=mp4]/best', outFile);
+                await igDownloadVideo(text, media, outFile);
                 if (!fs.existsSync(outFile)) throw new Error('video file toiri hoy nai');
                 const vsize = fs.statSync(outFile).size;
                 if (vsize > 100 * 1024 * 1024) { fs.unlinkSync(outFile); return reply('❌ Video ta onek boro (100MB+), WhatsApp e pathano jabe na.'); }
@@ -6558,13 +6657,14 @@ case "igdl": {
                 try { if (fs.existsSync(outFile)) fs.unlinkSync(outFile); } catch {}
             }
         } else {
-            await bad.sendMessage(m.chat, { image: { url: mediaUrl }, caption }, { quoted: m });
+            await bad.sendMessage(m.chat, { image: { url: media.url }, caption }, { quoted: m });
         }
         await bad.sendMessage(m.chat, {react: {text: '✅', key: m.key}});
     } catch (error) {
         console.error('Instagram Error:', error.message);
         await bad.sendMessage(m.chat, {react: {text: '❌', key: m.key}});
-        return reply(`❌ ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅ ғᴀɪʟᴇᴅ\n\n${error.message}`);
+        const isBlock = /login|sign in|bot|403|forbidden|rate limit/i.test(error.message || '');
+        return reply(`❌ ɪɴsᴛᴀɢʀᴀᴍ ᴅᴏᴡɴʟᴏᴀᴅ ғᴀɪʟᴇᴅ\n\n${error.message}${isBlock ? '\n\n⚠️ Instagram Railway er IP block korse mone hoy. Bot ta PC/phone e chalale (residential IP) cholbe.' : ''}\n\n[build ${REAN_BUILD}]`);
     }
 }
 break;
@@ -6585,9 +6685,8 @@ case "fbdl": {
     try {
         await bad.sendMessage(m.chat, {react: {text: '⏳', key: m.key}});
         
-        // Share link (facebook.com/share/v/...) ke asol video URL e resolve koro, tarpor FILE download
-        const videoPage = await resolveUrl(text);
-        await ytdlpDownloadFile(videoPage, 'best[ext=mp4]/best', outFile);
+        // yt-dlp primary, Facebook embed-endpoint fallback (Railway IP block holeo cholbe; reel e embed kaj kore na)
+        await fbDownloadVideo(text, outFile);
         if (!fs.existsSync(outFile)) throw new Error('video file toiri hoy nai');
         const vsize = fs.statSync(outFile).size;
         if (vsize > 100 * 1024 * 1024) { fs.unlinkSync(outFile); return reply('❌ Video ta onek boro (100MB+), WhatsApp e pathano jabe na. Choto video try koro.'); }
@@ -6602,7 +6701,8 @@ case "fbdl": {
     } catch (error) {
         console.error('Facebook Error:', error.message);
         await bad.sendMessage(m.chat, {react: {text: '❌', key: m.key}});
-        return reply(`❌ ғᴀᴄᴇʙᴏᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅ ғᴀɪʟᴇᴅ\n\n${error.message}`);
+        const isBlock = /login|sign in|bot|403|forbidden|rate limit|unsupported url/i.test(error.message || '');
+        return reply(`❌ ғᴀᴄᴇʙᴏᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅ ғᴀɪʟᴇᴅ\n\n${error.message}${isBlock ? '\n\n⚠️ Facebook Railway er IP block korse mone hoy. Bot ta PC/phone e chalale (residential IP) cholbe.' : ''}\n\n[build ${REAN_BUILD}]`);
     } finally {
         try { if (fs.existsSync(outFile)) fs.unlinkSync(outFile); } catch {}
     }
